@@ -10,10 +10,10 @@ class AES_128
 {
 public:
 	void SetKey(unsigned char* key);
-	unsigned char* Cipher(unsigned char* input, unsigned char* output);
-	unsigned char* InvCipher(unsigned char* input, unsigned char* output);
-	void* Cipher(void* input, void* output, int length = 0);
-	void* InvCipher(void* input, void* output, int length);
+	unsigned char* Cipher(const unsigned char* input, unsigned char* output);
+	unsigned char* InvCipher(const unsigned char* input, unsigned char* output);
+	void* Cipher(const void* input, void* output, int length = 0);
+	void* InvCipher(const void* input, void* output, int length);
 
 private:
 	unsigned char w[11][4][4];
@@ -32,17 +32,13 @@ private:
 };
 
 #define ONLY_CFB
-enum AESMode_t { MODE_OFB = 1, MODE_CFB, MODE_CBC, MODE_ECB };
-class AES_128_mode {
+class AES_128_cfb {
 private:
 	AES_128 m_aes;
-	AESMode_t	  m_mode;
 public:
-	AES_128_mode();
-	void set_mode(AESMode_t _mode);
 	void set_key(unsigned char* key);
-	int  Encrypt(unsigned char* iv, unsigned char* input, int length, unsigned char* output);
-	int  Decrypt(unsigned char* iv, unsigned char* input, int length, unsigned char* output);
+	int  Encrypt(unsigned char* iv, const unsigned char* input, int length, unsigned char* output);
+	int  Decrypt(unsigned char* iv, const unsigned char* input, int length, unsigned char* output);
 };
 
 

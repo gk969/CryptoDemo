@@ -47,13 +47,13 @@ void AES_128::SetKey(unsigned char* key) {
     KeyExpansion(key);
 }
 
-unsigned char* AES_128::Cipher(unsigned char* input, unsigned char* output) {
+unsigned char* AES_128::Cipher(const unsigned char* in_block, unsigned char* out_block) {
     unsigned char state[4][4];
     int i, r, c;
     
     for (r = 0; r < 4; r++) {
         for (c = 0; c < 4; c++) {
-            state[r][c] = input[c * 4 + r];
+            state[r][c] = in_block[c * 4 + r];
         }
     }
     
@@ -69,20 +69,20 @@ unsigned char* AES_128::Cipher(unsigned char* input, unsigned char* output) {
     
     for (r = 0; r < 4; r++) {
         for (c = 0; c < 4; c++) {
-            output[c * 4 + r] = state[r][c];
+            out_block[c * 4 + r] = state[r][c];
         }
     }
     
-    return output;
+    return out_block;
 }
 
-unsigned char* AES_128::InvCipher(unsigned char* input, unsigned char* output) {
+unsigned char* AES_128::InvCipher(const unsigned char* in_block, unsigned char* out_block) {
     unsigned char state[4][4];
     int i, r, c;
     
     for (r = 0; r < 4; r++) {
         for (c = 0; c < 4; c++) {
-            state[r][c] = input[c * 4 + r];
+            state[r][c] = in_block[c * 4 + r];
         }
     }
     
@@ -98,34 +98,34 @@ unsigned char* AES_128::InvCipher(unsigned char* input, unsigned char* output) {
     
     for (r = 0; r < 4; r++) {
         for (c = 0; c < 4; c++) {
-            output[c * 4 + r] = state[r][c];
+            out_block[c * 4 + r] = state[r][c];
         }
     }
-    return output;
+    return out_block;
 }
 
-void* AES_128::Cipher(void* input, void* output, int length) {
-    unsigned char* in = (unsigned char*)input;
-    unsigned char* out = (unsigned char*)output;
+void* AES_128::Cipher(const void* in_block, void* out_block, int length) {
+    unsigned char* in = (unsigned char*)in_block;
+    unsigned char* out = (unsigned char*)out_block;
     int i;
     if (!length) {
         while (*(in + length++));
-        in = (unsigned char*)input;
+        in = (unsigned char*)in_block;
     }
     for (i = 0; i < length; i += 16) {
         Cipher(in + i, out + i);
     }
-    return output;
+    return out_block;
 }
 
-void* AES_128::InvCipher(void* input, void* output, int length) {
-    unsigned char* in = (unsigned char*)input;
-    unsigned char* out = (unsigned char*)output;
+void* AES_128::InvCipher(const void* in_block, void* out_block, int length) {
+    unsigned char* in = (unsigned char*)in_block;
+    unsigned char* out = (unsigned char*)out_block;
     int i;
     for (i = 0; i < length; i += 16) {
         InvCipher(in + i, out + i);
     }
-    return output;
+    return out_block;
 }
 
 const unsigned char rc[] = { 0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80, 0x1b, 0x36 };
@@ -207,9 +207,9 @@ void AES_128::MixColumns(unsigned char state[][4]) {
         }
         for (r = 0; r < 4; r++) {
             state[r][c] = FFmul(0x02, t[r])
-                          ^ FFmul(0x03, t[(r + 1) % 4])
-                          ^ FFmul(0x01, t[(r + 2) % 4])
-                          ^ FFmul(0x01, t[(r + 3) % 4]);
+                        ^ FFmul(0x03, t[(r + 1) % 4])
+                        ^ FFmul(0x01, t[(r + 2) % 4])
+                        ^ FFmul(0x01, t[(r + 3) % 4]);
         }
     }
 }
@@ -262,215 +262,55 @@ void AES_128::InvMixColumns(unsigned char state[][4]) {
 }
 
 /**************************************************************/
-//AES_128_mode
+//AES_128_cfb
 
-AES_128_mode::AES_128_mode() {
-    m_mode = MODE_CFB;
-}
-
-void AES_128_mode::set_mode(AESMode_t _mode) {
-    m_mode = _mode;
-}
-
-void AES_128_mode::set_key(unsigned char* _key) {
+void AES_128_cfb::set_key(unsigned char* _key) {
     m_aes.SetKey(_key);
 }
 
-int AES_128_mode::Encrypt(unsigned char* iv, unsigned char* _in, int _length, unsigned char* _out) {
-    bool first_round = true;
-    int rounds = 0;
-    int start = 0;
-    int end = 0;
-    unsigned char input[16] = { 0 };
-    unsigned char output[16] = { 0 };
-    unsigned char ciphertext[16] = { 0 };
-    unsigned char cipherout[256] = { 0 };
-    unsigned char plaintext[16] = { 0 };
-    int co_index = 0;
-    // 1. get rounds
-    if (_length % 16 == 0) {
-        rounds = _length / 16;
-    } else {
-        rounds = _length / 16 + 1;
-    }
-    // 2. for all rounds
-    for (int j = 0; j < rounds; ++j) {
-        start = j * 16;
-        end = j * 16 + 16;
-        if (end > _length)
-            end = _length;	// end of input
-        // 3. copyt input to m_plaintext
-        memset(plaintext, 0, 16);
-        memcpy(plaintext, _in + start, end - start);
-        // 4. handle all modes
-        if (m_mode == MODE_CFB) {
-            if (first_round == true) {
-                m_aes.Cipher(iv, output);
-                first_round = false;
-            } else {
-                m_aes.Cipher(input, output);
-            }
-            for (int i = 0; i < 16; ++i) {
-                if ((end - start) - 1 < i) {
-                    ciphertext[i] = 0 ^ output[i];
-                } else {
-                    ciphertext[i] = plaintext[i] ^ output[i];
-                }
-            }
-            for (int k = 0; k < end - start; ++k) {
-                cipherout[co_index++] = ciphertext[k];
-            }
-            //memset(input,0, 16);
-            memcpy(input, ciphertext, 16);
-#ifndef ONLY_CFB
-        } else if (m_mode == MODE_OFB) {			// MODE_OFB
-            if (first_round == true) {
-                m_aes.Cipher(iv, output); //
-                first_round = false;
-            } else {
-                m_aes.Cipher(input, output);
-            }
-            // ciphertext = plaintext ^ output
-            for (int i = 0; i < 16; ++i) {
-                if ((end - start) - 1 < i) {
-                    ciphertext[i] = 0 ^ output[i];
-                } else {
-                    ciphertext[i] = plaintext[i] ^ output[i];
-                }
-            }
-            //
-            for (int k = 0; k < end - start; ++k) {
-                cipherout[co_index++] = ciphertext[k];
-            }
-            //memset(input,0,16);
-            memcpy(input, output, 16);
-        } else if (m_mode == MODE_CBC) {			// MODE_CBC
-            // printf("-----plaintext------");
-            // print(plaintext, 16);
-            // printf("--------------------\n");
-            //			printf("-----m_iv-----------\n");
-            //			print (m_iv, 16);
-            //			printf("--------------------\n");
-            for (int i = 0; i < 16; ++i) {
-                if (first_round == true) {
-                    input[i] = plaintext[i] ^ iv[i];
-                } else {
-                    input[i] = plaintext[i] ^ ciphertext[i];
-                }
-            }
-            first_round = false;
-            //			printf("^^^^^^^^^^^^\n");
-            //			print(input, 16);
-            //			printf("^^^^^^^^^^^^\n");
-            m_aes.Cipher(input, ciphertext);
-            // printf("****ciphertext****");
-            // print(ciphertext, 16);
-            // printf("************\n");
-            for (int k = 0; k < end - start; ++k) {
-                cipherout[co_index++] = ciphertext[k];
-            }
-            //memcpy(cipherout, ciphertext, 16);
-            //co_index = 16;
-        } else if (m_mode == MODE_ECB) {
-            // TODO:
-#endif
+int AES_128_cfb::Encrypt(unsigned char* iv, const unsigned char* in, int len, unsigned char* out) {
+    unsigned char ciphertext[16];
+    unsigned char plaintext[16];
+    
+    memcpy(plaintext, iv, 16);
+    for (int offset = 0; offset < len; offset += 16) {
+        int block_len = len - offset;
+        if (block_len > 16) {
+            block_len = 16;
         }
+        
+        m_aes.Cipher(plaintext, ciphertext);
+        
+        for (int i = 0; i < block_len; ++i) {
+            ciphertext[i] ^= in[offset + i];
+        }
+        
+        memcpy(out + offset, ciphertext, block_len);
+        memcpy(plaintext, ciphertext, block_len);
     }
-    memcpy(_out, cipherout, co_index);
-    return co_index;
+    return len;
 }
 
-int AES_128_mode::Decrypt(unsigned char* iv, unsigned char* _in, int _length, unsigned char* _out) {
-    // TODO :
-    bool first_round = true;
-    int rounds = 0;
-    unsigned char ciphertext[16] = { 0 };
-    unsigned char input[16] = { 0 };
-    unsigned char output[16] = { 0 };
-    unsigned char plaintext[16] = { 0 };
-    unsigned char plainout[256] = { 0 };
-    int po_index = 0;
-    if (_length % 16 == 0) {
-        rounds = _length / 16;
-    } else {
-        rounds = _length / 16 + 1;
-    }
+int AES_128_cfb::Decrypt(unsigned char* iv, const unsigned char* in, int len, unsigned char* out) {
+    unsigned char ciphertext[16];
+    unsigned char plaintext[16];
     
-    int start = 0;
-    int end = 0;
-    
-    for (int j = 0; j < rounds; j++) {
-        start = j * 16;
-        end = start + 16;
-        if (end > _length) {
-            end = _length;
+    memcpy(ciphertext, iv, 16);
+    for (int offset = 0; offset < len; offset += 16) {
+        int block_len = len - offset;
+        if (block_len > 16) {
+            block_len = 16;
         }
-        memset(ciphertext, 0, 16);
-        memcpy(ciphertext, _in + start, end - start);
-        if (m_mode == MODE_CFB) {
-            if (first_round == true) {
-                m_aes.Cipher(iv, output);
-                first_round = false;
-            } else {
-                m_aes.Cipher(input, output);
-            }
-            for (int i = 0; i < 16; i++) {
-                if (end - start - 1 < i) {
-                    plaintext[i] = output[i] ^ 0;
-                } else {
-                    plaintext[i] = output[i] ^ ciphertext[i];
-                }
-            }
-            for (int k = 0; k < end - start; ++k) {
-                plainout[po_index++] = plaintext[k];
-            }
-            //memset(input, 0, 16);
-            memcpy(input, ciphertext, 16);
-#ifndef ONLY_CFB
-        } else if (m_mode == MODE_OFB) {
-            if (first_round == true) {
-                m_aes.Cipher(iv, output);
-                first_round = false;
-            } else {
-                m_aes.Cipher(input, output);
-            }
-            for (int i = 0; i < 16; i++) {
-                if (end - start - 1 < i) {
-                    plaintext[i] = 0 ^ ciphertext[i];
-                    first_round = false;
-                } else {
-                    plaintext[i] = output[i] ^ ciphertext[i];
-                }
-            }
-            for (int k = 0; k < end - start; ++k) {
-                plainout[po_index++] = plaintext[k];
-            }
-            memcpy(input, output, 16);
-        } else if (m_mode == MODE_CBC) {
-            // printf("------ciphertext------");
-            // print(ciphertext, 16);
-            // printf("----------------------\n");
-            m_aes.InvCipher(ciphertext, output);
-            // printf("------output------");
-            // print(output, 16);
-            // printf("----------------------\n");
-            for (int i = 0; i < 16; ++i) {
-                if (first_round == true) {
-                    plaintext[i] = iv[i] ^ output[i];
-                } else {
-                    plaintext[i] = input[i] ^ output[i];
-                }
-            }
-            first_round = false;
-            for (int k = 0; k < end - start; ++k) {
-                plainout[po_index++] = plaintext[k];
-            }
-            memcpy(input, ciphertext, 16);
-        } else {
-            // TODO
-#endif
+        
+        m_aes.Cipher(ciphertext, plaintext);
+        
+        for (int i = 0; i < block_len; i++) {
+            plaintext[i] ^= in[offset + i];
         }
+        
+        memcpy(ciphertext, in + offset, block_len);
+        memcpy(out + offset, plaintext, block_len);
     }
-    memcpy(_out, plainout, po_index);
-    return po_index;
+    return len;
 }
+
